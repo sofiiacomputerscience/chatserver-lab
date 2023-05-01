@@ -1,0 +1,8 @@
+[workspace]
+
+members = [
+    "chatproto",
+    "client",
+    "server",
+]
+
