@@ -1,29 +1,7 @@
 #[cfg(feature = "federation")]
 use std::collections::HashMap;
 
-use crate::{core::*, messages::*, workproof::gen_workproof};
-
-#[derive(Debug, Default)]
-struct Client {
-  id: ClientId,
-  curid: u128,
-}
-
-impl Client {
-  fn new(id: ClientId) -> Self {
-    Client { id, curid: 0 }
-  }
-  fn sequence<A>(&mut self, content: A) -> Sequence<A> {
-    self.curid += 1;
-    let workproof = gen_workproof((&self.id).into(), WORKPROOF_STRENGTH, u128::MAX).unwrap();
-    Sequence {
-      seqid: self.curid,
-      src: self.id,
-      workproof,
-      content,
-    }
-  }
-}
+use crate::{client::Client, core::*, messages::*};
 
 async fn sequence_correct<M: MessageServer>() -> Result<(), ClientError> {
   let sid = ServerId::default();
@@ -149,7 +127,11 @@ async fn multiple_client_messages_test<M: MessageServer>() -> anyhow::Result<()>
       content: i.to_string(),
     };
     if reply != expected_reply {
-      anyhow::bail!("Did not receive expected message {}, received {:?}", i, reply);
+      anyhow::bail!(
+        "Did not receive expected message {}, received {:?}",
+        i,
+        reply
+      );
     }
   }
   for i in 100..200 {
@@ -159,7 +141,11 @@ async fn multiple_client_messages_test<M: MessageServer>() -> anyhow::Result<()>
       content: i.to_string(),
     };
     if reply != expected_reply {
-      anyhow::bail!("Did not receive expected message {}, received {:?}", i, reply);
+      anyhow::bail!(
+        "Did not receive expected message {}, received {:?}",
+        i,
+        reply
+      );
     }
   }
   let reply = server.client_poll(c2).await;

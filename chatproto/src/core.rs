@@ -27,8 +27,8 @@ pub trait MessageServer {
 
   /// handles a sequenced message
   /// you must verify:
-  ///  * incrementing sequence numbers
-  ///  * check the workproof
+  ///  * the workproof first, and then,
+  ///  * that sequence numbers are increasing
   async fn handle_sequenced_message<A: Send>(&self, msg: Sequence<A>) -> Result<A, ClientError>;
 
   /// pull function for the client

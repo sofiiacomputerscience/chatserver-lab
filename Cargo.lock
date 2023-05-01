@@ -277,6 +277,8 @@ dependencies = [
  "anyhow",
  "async-std",
  "chatproto",
+ "log",
+ "pretty_env_logger",
  "structopt",
 ]
 
@@ -831,6 +833,8 @@ dependencies = [
  "anyhow",
  "async-std",
  "chatproto",
+ "log",
+ "pretty_env_logger",
  "structopt",
 ]
 

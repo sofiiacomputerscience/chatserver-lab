@@ -5,7 +5,8 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use crate::{
   core::{MessageServer, MAILBOX_SIZE, WORKPROOF_STRENGTH},
   messages::{
-    ClientError, ClientId, ClientMessage, ClientPollReply, ClientReply, FullyQualifiedMessage, Sequence, ServerId,
+    ClientError, ClientId, ClientMessage, ClientPollReply, ClientReply, FullyQualifiedMessage,
+    Sequence, ServerId,
   },
   workproof::verify_workproof,
 };
@@ -27,7 +28,10 @@ impl MessageServer for Server {
     todo!()
   }
 
-  async fn handle_sequenced_message<A: Send>(&self, sequence: Sequence<A>) -> Result<A, ClientError> {
+  async fn handle_sequenced_message<A: Send>(
+    &self,
+    sequence: Sequence<A>,
+  ) -> Result<A, ClientError> {
     todo!()
   }
 

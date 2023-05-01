@@ -45,3 +45,18 @@ traits methods. You will most likely want to use `RwLock` (the one from `async_s
 ## Part 3, federation
 
 Run tests and executables with the `-F federation` flag.
+
+# Running the client and server
+
+
+## Server
+
+```shell
+$ RUST_LOG=debug cargo run -p server
+```
+
+## Client
+
+```shell
+$ RUST_LOG=debug cargo run -p client
+```

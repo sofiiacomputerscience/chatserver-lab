@@ -3,9 +3,13 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-#[derive(Serialize, Deserialize, std::hash::Hash, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug)]
+#[derive(
+  Serialize, Deserialize, std::hash::Hash, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug,
+)]
 pub struct ClientId(pub(crate) Uuid);
-#[derive(Serialize, Deserialize, std::hash::Hash, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug)]
+#[derive(
+  Serialize, Deserialize, std::hash::Hash, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug,
+)]
 pub struct ServerId(pub(crate) Uuid);
 
 impl From<u128> for ClientId {
@@ -96,7 +100,10 @@ pub enum ClientMessage {
   /// simple text message
   Text { dest: ClientId, content: String },
   /// multiple targets text message
-  MText { dest: Vec<ClientId>, content: String },
+  MText {
+    dest: Vec<ClientId>,
+    content: String,
+  },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
@@ -122,7 +129,9 @@ pub enum ServerMessage {
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub enum ClientError {
-  SequenceError,
+  WorkProofError, // workproof failed
+  UnknownClient,  // client is unknown
+  SequenceError,  // sequence number not increasing
   BoxFull(ClientId),
   InternalError,
 }
@@ -133,6 +142,8 @@ impl std::fmt::Display for ClientError {
       ClientError::SequenceError => "SequenceError".fmt(f),
       ClientError::BoxFull(clientid) => write!(f, "BoxFull({})", clientid),
       ClientError::InternalError => "InternalError".fmt(f),
+      ClientError::WorkProofError => "WorkProofError".fmt(f),
+      ClientError::UnknownClient => "UnknownClient".fmt(f),
     }
   }
 }
