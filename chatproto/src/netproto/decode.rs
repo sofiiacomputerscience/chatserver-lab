@@ -1,6 +1,5 @@
 use std::{collections::HashMap, io::Read};
 
-use bincode::Options;
 use byteorder::{LittleEndian, ReadBytesExt};
 use uuid::Uuid;
 

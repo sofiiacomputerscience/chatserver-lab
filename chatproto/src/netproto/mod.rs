@@ -1,12 +1,5 @@
-use bincode::Options;
-
 pub mod decode;
 pub mod encode;
-
-fn options() -> bincode::config::WithOtherIntEncoding<bincode::config::DefaultOptions, bincode::config::VarintEncoding>
-{
-  bincode::DefaultOptions::new().with_varint_encoding()
-}
 
 #[cfg(test)]
 mod test {

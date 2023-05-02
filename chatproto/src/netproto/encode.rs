@@ -1,6 +1,5 @@
 use std::{collections::HashMap, io::Write};
 
-use bincode::Options;
 use byteorder::{LittleEndian, WriteBytesExt};
 use uuid::Uuid;
 
