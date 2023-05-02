@@ -1,6 +1,8 @@
 #[cfg(feature = "federation")]
 use std::collections::HashMap;
 
+use anyhow::Context;
+
 use crate::{client::Client, core::*, messages::*};
 
 async fn sequence_correct<M: MessageServer>() -> Result<(), ClientError> {
@@ -51,8 +53,8 @@ async fn workproof_bad<M: MessageServer>() -> anyhow::Result<()> {
     })
     .await;
   match r {
-    Err(_) => Ok(()),
-    Ok(_) => anyhow::bail!("expected an error"),
+    Err(ClientError::WorkProofError) => Ok(()),
+    rr => anyhow::bail!("expected a workproof error, got {:?}", rr),
   }
 }
 
@@ -181,6 +183,9 @@ async fn message_to_outer_user<M: MessageServer>() -> anyhow::Result<()> {
       clients: HashMap::from([(euuid, "external user".into())]),
     })
     .await;
+  if r != ServerReply::Outgoing(Vec::new()) {
+    anyhow::bail!("Expected empty outgoing answer, got {:?}", r);
+  }
   assert_eq!(r, ServerReply::Outgoing(Vec::new()));
   let r = server
     .handle_client_message(
@@ -191,36 +196,47 @@ async fn message_to_outer_user<M: MessageServer>() -> anyhow::Result<()> {
       },
     )
     .await;
-  assert_eq!(
-    r,
-    [ClientReply::Transfer(
+  if r
+    != [ClientReply::Transfer(
       s3,
       ServerMessage::Message(FullyQualifiedMessage {
         src: c1,
         srcsrv: sid,
         dsts: vec![(euuid, s1)],
-        content: "Hello".to_string()
-      })
+        content: "Hello".to_string(),
+      }),
     )]
-  );
+  {
+    anyhow::bail!("Expected a transfered message, got {:?}", r)
+  }
 
   Ok(())
 }
 
 async fn all_tests<M: MessageServer>(counter: &mut usize) -> anyhow::Result<()> {
-  sequence_correct::<M>().await?;
+  sequence_correct::<M>()
+    .await
+    .with_context(|| "sequence_correct")?;
   *counter = 1;
-  sequence_bad::<M>().await?;
+  sequence_bad::<M>().await.with_context(|| "sequence_bad")?;
   *counter = 2;
-  workproof_bad::<M>().await?;
+  workproof_bad::<M>()
+    .await
+    .with_context(|| "workproof_bad")?;
   *counter = 3;
-  simple_client_test::<M>().await?;
+  simple_client_test::<M>()
+    .await
+    .with_context(|| "simple_client_test")?;
   *counter = 4;
-  multiple_client_messages_test::<M>().await?;
+  multiple_client_messages_test::<M>()
+    .await
+    .with_context(|| "multiple_client_message_test")?;
   *counter = 5;
   #[cfg(feature = "federation")]
   {
-    message_to_outer_user::<M>().await?;
+    message_to_outer_user::<M>()
+      .await
+      .with_context(|| "message_to_outer_user")?;
     *counter = 6;
   }
   Ok(())
@@ -231,7 +247,7 @@ pub(crate) fn test_message_server<M: MessageServer>() {
     let mut counter = 0;
     match all_tests::<M>(&mut counter).await {
       Ok(()) => (),
-      Err(rr) => panic!("counter={}, error={}", counter, rr),
+      Err(rr) => panic!("counter={}, error={:?}", counter, rr),
     }
   });
 }
