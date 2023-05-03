@@ -216,6 +216,52 @@ async fn message_to_outer_user<M: MessageServer>() -> anyhow::Result<()> {
   Ok(())
 }
 
+#[cfg(feature = "federation")]
+async fn message_to_outer_user_delayed<M: MessageServer>() -> anyhow::Result<()> {
+  let sid = ServerId::default();
+  let server: M = MessageServer::new(sid);
+
+  let c1 = server.register_local_client("user 1".to_string()).await;
+  let s1 = ServerId::default();
+  let s2 = ServerId::default();
+  let s3 = ServerId::default();
+  let euuid = ClientId::default();
+
+  log::debug!("route: {} -> {} -> {} -> us", s1, s2, s3);
+
+  let r = server
+    .handle_client_message(
+      c1,
+      ClientMessage::Text {
+        dest: euuid,
+        content: "Hello".to_string(),
+      },
+    )
+    .await;
+  if r != [ClientReply::Delayed] {
+    anyhow::bail!("Expected a delayed message first, but got {:?}", r);
+  }
+  let r = server
+    .handle_server_message(ServerMessage::Announce {
+      route: vec![s1, s2, s3],
+      clients: HashMap::from([(euuid, "external user".into())]),
+    })
+    .await;
+  let expected = ServerReply::Outgoing(vec![Outgoing {
+    nexthop: s3,
+    message: FullyQualifiedMessage {
+      src: c1,
+      srcsrv: sid,
+      dsts: vec![(euuid, s1)],
+      content: "Hello".to_string(),
+    },
+  }]);
+  if r != expected {
+    anyhow::bail!("Expected {:?}\n, got {:?}", expected, r);
+  }
+
+  Ok(())
+}
 async fn all_tests<M: MessageServer>(counter: &mut usize) -> anyhow::Result<()> {
   sequence_correct::<M>()
     .await
@@ -241,6 +287,10 @@ async fn all_tests<M: MessageServer>(counter: &mut usize) -> anyhow::Result<()> 
       .await
       .with_context(|| "message_to_outer_user")?;
     *counter = 6;
+    message_to_outer_user_delayed::<M>()
+      .await
+      .with_context(|| "message_to_outer_user")?;
+    *counter = 7;
   }
   Ok(())
 }
