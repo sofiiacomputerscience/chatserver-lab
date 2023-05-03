@@ -177,6 +177,9 @@ async fn message_to_outer_user<M: MessageServer>() -> anyhow::Result<()> {
   let s2 = ServerId::default();
   let s3 = ServerId::default();
   let euuid = ClientId::default();
+
+  log::debug!("route: {} -> {} -> {} -> us", s1, s2, s3);
+
   let r = server
     .handle_server_message(ServerMessage::Announce {
       route: vec![s1, s2, s3],
@@ -196,18 +199,18 @@ async fn message_to_outer_user<M: MessageServer>() -> anyhow::Result<()> {
       },
     )
     .await;
-  if r
-    != [ClientReply::Transfer(
-      s3,
-      ServerMessage::Message(FullyQualifiedMessage {
-        src: c1,
-        srcsrv: sid,
-        dsts: vec![(euuid, s1)],
-        content: "Hello".to_string(),
-      }),
-    )]
-  {
-    anyhow::bail!("Expected a transfered message, got {:?}", r)
+  let expected = [ClientReply::Transfer(
+    s3,
+    ServerMessage::Message(FullyQualifiedMessage {
+      src: c1,
+      srcsrv: sid,
+      dsts: vec![(euuid, s1)],
+      content: "Hello".to_string(),
+    }),
+  )];
+
+  if r != expected {
+    anyhow::bail!("Expected {:?}, got {:?}", expected, r)
   }
 
   Ok(())
