@@ -16,10 +16,12 @@ fn uuid<R: Read>(rd: &mut R) -> anyhow::Result<Uuid> {
   todo!()
 }
 
+// hint: reuse uuid
 pub fn clientid<R: Read>(rd: &mut R) -> anyhow::Result<ClientId> {
   todo!()
 }
 
+// hint: reuse uuid
 pub fn serverid<R: Read>(rd: &mut R) -> anyhow::Result<ServerId> {
   todo!()
 }
