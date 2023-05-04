@@ -89,7 +89,6 @@ async fn sequence_multiple_problems<M: MessageServer>() -> anyhow::Result<()> {
   }
 }
 
-
 async fn simple_client_test<M: MessageServer>() -> anyhow::Result<()> {
   let sid = ServerId::default();
   let server: M = MessageServer::new(sid);
@@ -199,6 +198,28 @@ async fn multiple_client_messages_test<M: MessageServer>() -> anyhow::Result<()>
   Ok(())
 }
 
+async fn mixed_results_client_message<M: MessageServer>() -> anyhow::Result<()> {
+  let sid = ServerId::default();
+  let server: M = MessageServer::new(sid);
+
+  let c1 = server.register_local_client("user 1".to_string()).await;
+  let c2 = server.register_local_client("user 2".to_string()).await;
+  let c3 = ClientId::default();
+
+  let m = server
+    .handle_client_message(
+      c1,
+      ClientMessage::MText {
+        dest: vec![c2, c3],
+        content: "Hello".to_string(),
+      },
+    )
+    .await;
+  if m != [ClientReply::Delivered, ClientReply::Delayed] {
+    anyhow::bail!("Expected Delivered/Delayed, but got {:?}", m)
+  }
+  Ok(())
+}
 #[cfg(feature = "federation")]
 async fn message_to_outer_user<M: MessageServer>() -> anyhow::Result<()> {
   let sid = ServerId::default();
@@ -231,18 +252,19 @@ async fn message_to_outer_user<M: MessageServer>() -> anyhow::Result<()> {
       },
     )
     .await;
-  let expected = [ClientReply::Transfer(
-    s3,
-    ServerMessage::Message(FullyQualifiedMessage {
-      src: c1,
-      srcsrv: sid,
-      dsts: vec![(euuid, s1)],
-      content: "Hello".to_string(),
-    }),
-  )];
+ let expected = [ClientReply::Transfer(
+      s3,
+      ServerMessage::Message(FullyQualifiedMessage {
+        src: c1,
+        srcsrv: sid,
+        dsts: vec![(euuid, s1)],
+        content: "Hello".to_string(),
+      }),
+    )];
 
-  if r != expected {
-    anyhow::bail!("Expected {:?}, got {:?}", expected, r)
+  if r
+    != expected  {
+    anyhow::bail!("Expected {:?}\n   , got {:?}", expected, r)
   }
 
   Ok(())
@@ -289,7 +311,7 @@ async fn message_to_outer_user_delayed<M: MessageServer>() -> anyhow::Result<()>
     },
   }]);
   if r != expected {
-    anyhow::bail!("Expected {:?}\n, got {:?}", expected, r);
+    anyhow::bail!("Expected {:?}\n,    got {:?}", expected, r);
   }
 
   Ok(())
@@ -309,7 +331,9 @@ async fn all_tests<M: MessageServer>(counter: &mut usize) -> anyhow::Result<()> 
     .await
     .with_context(|| "sequence_unknown_user")?;
   *counter += 1;
-  sequence_multiple_problems::<M>().await.with_context(|| "sequence_bad")?;
+  sequence_multiple_problems::<M>()
+    .await
+    .with_context(|| "sequence_bad")?;
   *counter += 1;
   simple_client_test::<M>()
     .await
@@ -319,6 +343,10 @@ async fn all_tests<M: MessageServer>(counter: &mut usize) -> anyhow::Result<()> 
     .await
     .with_context(|| "multiple_client_message_test")?;
   *counter += 1;
+  mixed_results_client_message::<M>()
+    .await
+    .with_context(|| "mixed_results_client_message")?;
+  *counter += 1;
   #[cfg(feature = "federation")]
   {
     message_to_outer_user::<M>()
@@ -327,7 +355,7 @@ async fn all_tests<M: MessageServer>(counter: &mut usize) -> anyhow::Result<()> 
     *counter += 1;
     message_to_outer_user_delayed::<M>()
       .await
-      .with_context(|| "message_to_outer_user")?;
+      .with_context(|| "message_to_outer_user_delayed")?;
     *counter += 1;
   }
   Ok(())
