@@ -25,6 +25,19 @@ async fn sequence_correct<M: MessageServer>() -> Result<(), ClientError> {
   Ok(())
 }
 
+async fn sequence_unknown_user<M: MessageServer>() -> anyhow::Result<()> {
+  let sid = ServerId::default();
+  let server: M = MessageServer::new(sid);
+  let c1 = ClientId::default();
+  let mut client1 = Client::new(c1);
+
+  let message = client1.sequence(());
+  match server.handle_sequenced_message(message).await {
+    Err(ClientError::UnknownClient) => Ok(()),
+    r => anyhow::bail!("Expected Err(UnknownClient), but got {:?}", r),
+  }
+}
+
 async fn sequence_bad<M: MessageServer>() -> anyhow::Result<()> {
   let sid = ServerId::default();
   let server: M = MessageServer::new(sid);
@@ -57,6 +70,25 @@ async fn workproof_bad<M: MessageServer>() -> anyhow::Result<()> {
     rr => anyhow::bail!("expected a workproof error, got {:?}", rr),
   }
 }
+
+async fn sequence_multiple_problems<M: MessageServer>() -> anyhow::Result<()> {
+  let sid = ServerId::default();
+  let server: M = MessageServer::new(sid);
+  let c1 = ClientId::default();
+  let r = server
+    .handle_sequenced_message(Sequence {
+      seqid: 1,
+      src: c1,
+      workproof: 0,
+      content: (),
+    })
+    .await;
+  match r {
+    Err(ClientError::WorkProofError) => Ok(()),
+    rr => anyhow::bail!("expected a workproof error, got {:?}", rr),
+  }
+}
+
 
 async fn simple_client_test<M: MessageServer>() -> anyhow::Result<()> {
   let sid = ServerId::default();
@@ -268,29 +300,35 @@ async fn all_tests<M: MessageServer>(counter: &mut usize) -> anyhow::Result<()> 
     .with_context(|| "sequence_correct")?;
   *counter = 1;
   sequence_bad::<M>().await.with_context(|| "sequence_bad")?;
-  *counter = 2;
+  *counter += 1;
   workproof_bad::<M>()
     .await
     .with_context(|| "workproof_bad")?;
-  *counter = 3;
+  *counter += 1;
+  sequence_unknown_user::<M>()
+    .await
+    .with_context(|| "sequence_unknown_user")?;
+  *counter += 1;
+  sequence_multiple_problems::<M>().await.with_context(|| "sequence_bad")?;
+  *counter += 1;
   simple_client_test::<M>()
     .await
     .with_context(|| "simple_client_test")?;
-  *counter = 4;
+  *counter += 1;
   multiple_client_messages_test::<M>()
     .await
     .with_context(|| "multiple_client_message_test")?;
-  *counter = 5;
+  *counter += 1;
   #[cfg(feature = "federation")]
   {
     message_to_outer_user::<M>()
       .await
       .with_context(|| "message_to_outer_user")?;
-    *counter = 6;
+    *counter += 1;
     message_to_outer_user_delayed::<M>()
       .await
       .with_context(|| "message_to_outer_user")?;
-    *counter = 7;
+    *counter += 1;
   }
   Ok(())
 }
