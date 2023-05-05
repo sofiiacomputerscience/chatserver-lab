@@ -220,6 +220,43 @@ async fn mixed_results_client_message<M: MessageServer>() -> anyhow::Result<()> 
   }
   Ok(())
 }
+
+async fn mailbox_full<M: MessageServer>() -> anyhow::Result<()> {
+  let sid = ServerId::default();
+  let server: M = MessageServer::new(sid);
+
+  let c1 = server.register_local_client("user 1".to_string()).await;
+  let c2 = server.register_local_client("user 2".to_string()).await;
+
+  for n in 0..MAILBOX_SIZE {
+    let m = server
+      .handle_client_message(
+        c1,
+        ClientMessage::Text {
+          dest: c2,
+          content: format!("{n}"),
+        },
+      )
+      .await;
+    if m != [ClientReply::Delivered] {
+      anyhow::bail!("Expected Delivered, but got {:?}", m)
+    }
+  }
+  let m = server
+    .handle_client_message(
+      c1,
+      ClientMessage::Text {
+        dest: c2,
+        content: "FULL".into(),
+      },
+    )
+    .await;
+  if m != [ClientReply::Error(ClientError::BoxFull(c2))] {
+    anyhow::bail!("Expected BoxFull, but got {:?}", m)
+  }
+  Ok(())
+}
+
 #[cfg(feature = "federation")]
 async fn message_to_outer_user<M: MessageServer>() -> anyhow::Result<()> {
   let sid = ServerId::default();
@@ -252,18 +289,17 @@ async fn message_to_outer_user<M: MessageServer>() -> anyhow::Result<()> {
       },
     )
     .await;
- let expected = [ClientReply::Transfer(
-      s3,
-      ServerMessage::Message(FullyQualifiedMessage {
-        src: c1,
-        srcsrv: sid,
-        dsts: vec![(euuid, s1)],
-        content: "Hello".to_string(),
-      }),
-    )];
+  let expected = [ClientReply::Transfer(
+    s3,
+    ServerMessage::Message(FullyQualifiedMessage {
+      src: c1,
+      srcsrv: sid,
+      dsts: vec![(euuid, s1)],
+      content: "Hello".to_string(),
+    }),
+  )];
 
-  if r
-    != expected  {
+  if r != expected {
     anyhow::bail!("Expected {:?}\n   , got {:?}", expected, r)
   }
 
@@ -346,6 +382,8 @@ async fn all_tests<M: MessageServer>(counter: &mut usize) -> anyhow::Result<()> 
   mixed_results_client_message::<M>()
     .await
     .with_context(|| "mixed_results_client_message")?;
+  *counter += 1;
+  mailbox_full::<M>().await.with_context(|| "mailbox_full")?;
   *counter += 1;
   #[cfg(feature = "federation")]
   {
