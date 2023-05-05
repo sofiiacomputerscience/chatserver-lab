@@ -181,7 +181,6 @@ mod test {
 
   #[test]
   fn u128() {
-    pretty_env_logger::init();
     let samples: [(u128, &[u8]); 10] = [
       (1, &[1]),
       (0xff, &[251, 255, 0]),
