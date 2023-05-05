@@ -362,6 +362,7 @@ async fn all_tests<M: MessageServer>(counter: &mut usize) -> anyhow::Result<()> 
 }
 
 pub(crate) fn test_message_server<M: MessageServer>() {
+  pretty_env_logger::init();
   async_std::task::block_on(async {
     let mut counter = 0;
     match all_tests::<M>(&mut counter).await {
