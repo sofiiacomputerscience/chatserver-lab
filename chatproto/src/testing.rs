@@ -104,7 +104,9 @@ async fn simple_client_test<M: MessageServer>() -> anyhow::Result<()> {
       },
     )
     .await;
-  assert_eq!(r, vec![ClientReply::Delivered]);
+  if r != &[ClientReply::Delivered] {
+    anyhow::bail!("expected a single delivered message, got {:?}", r)
+  }
   let reply = server.client_poll(c2).await;
   let expected = ClientPollReply::Message {
     src: c1,
@@ -135,7 +137,7 @@ async fn multiple_client_messages_test<M: MessageServer>() -> anyhow::Result<()>
       )
       .await;
     if r != [ClientReply::Delivered] {
-      anyhow::bail!("Could not deliver message {}, got {:?}", i, r);
+      anyhow::bail!("A> Could not deliver message {}, got {:?}", i, r);
     }
   }
   for i in 0..100 {
@@ -149,7 +151,7 @@ async fn multiple_client_messages_test<M: MessageServer>() -> anyhow::Result<()>
       )
       .await;
     if r != [ClientReply::Delivered, ClientReply::Delivered] {
-      anyhow::bail!("Could not deliver message {}, got {:?}", i, r);
+      anyhow::bail!("B> Could not deliver message {}, got {:?}", i, r);
     }
   }
 
@@ -161,7 +163,7 @@ async fn multiple_client_messages_test<M: MessageServer>() -> anyhow::Result<()>
     };
     if reply != expected_reply {
       anyhow::bail!(
-        "Did not receive expected message {}, received {:?}",
+        "A> Did not receive expected message {}, received {:?}",
         i,
         reply
       );
@@ -175,7 +177,7 @@ async fn multiple_client_messages_test<M: MessageServer>() -> anyhow::Result<()>
     };
     if reply != expected_reply {
       anyhow::bail!(
-        "Did not receive expected message {}, received {:?}",
+        "B> Did not receive expected message {}, received {:?}",
         i,
         reply
       );
