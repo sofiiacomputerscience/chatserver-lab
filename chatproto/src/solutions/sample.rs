@@ -1,6 +1,7 @@
 use async_std::sync::RwLock;
 use async_trait::async_trait;
 use std::collections::{HashMap, HashSet, VecDeque};
+use uuid::Uuid;
 
 use crate::{
   core::{MessageServer, MAILBOX_SIZE, WORKPROOF_STRENGTH},
@@ -24,10 +25,17 @@ impl MessageServer for Server {
     todo!()
   }
 
+  // note: you need to roll a Uuid, and then convert it into a ClientId
+  // Uuid::new_v4() will generate such a value
   async fn register_local_client(&self, name: String) -> ClientId {
     todo!()
   }
 
+  /*
+   implementation notes:
+   * the workproof should be checked first
+   * the nonce is in sequence.src
+  */
   async fn handle_sequenced_message<A: Send>(
     &self,
     sequence: Sequence<A>,
