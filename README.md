@@ -52,11 +52,11 @@ Run tests and executables with the `-F federation` flag.
 ## Server
 
 ```shell
-$ RUST_LOG=debug cargo run -p server
+$ RUST_LOG=debug cargo run --bin server
 ```
 
 ## Client
 
 ```shell
-$ RUST_LOG=debug cargo run -p client
+$ RUST_LOG=debug cargo run --bin client -- --name my_name
 ```
