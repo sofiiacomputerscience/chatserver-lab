@@ -36,6 +36,8 @@ pub trait MessageServer {
 
   /// handles a client message
   /// * if the user is unknown, it might be that it is remote, so messages should be kept until the user becomes known
+  ///   as a result, the "Delayed" message should be sent
+  /// * until polled, messages are to be stored. There is a maximum mailbox size after which an error should be returned
   async fn handle_client_message(&self, src: ClientId, msg: ClientMessage) -> Vec<ClientReply>;
 
   #[cfg(feature = "federation")]

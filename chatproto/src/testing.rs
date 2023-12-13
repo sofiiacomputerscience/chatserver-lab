@@ -1,4 +1,3 @@
-#[cfg(feature = "federation")]
 use std::collections::HashMap;
 
 use anyhow::Context;
@@ -113,7 +112,28 @@ async fn simple_client_test<M: MessageServer>() -> anyhow::Result<()> {
     content: "hello".into(),
   };
   if reply != expected {
-    anyhow::bail!("Did not receive expected message, received {:?}", reply);
+    anyhow::bail!(
+      "Did not receive expected message, expected {:?}, received {:?}",
+      expected,
+      reply
+    );
+  }
+  Ok(())
+}
+
+async fn list_users_test<M: MessageServer>() -> anyhow::Result<()> {
+  let sid = ServerId::default();
+  let server: M = MessageServer::new(sid);
+  let mut usermap = HashMap::new();
+  for n in 0..100_u32 {
+    let username = format!("user {n}");
+    let id = server.register_local_client(username.clone()).await;
+    usermap.insert(id, username);
+  }
+  let actual = server.list_users().await;
+
+  if actual != usermap {
+    anyhow::bail!("Incorrect user map");
   }
   Ok(())
 }
@@ -376,6 +396,10 @@ async fn all_tests<M: MessageServer>(counter: &mut usize) -> anyhow::Result<()> 
   simple_client_test::<M>()
     .await
     .with_context(|| "simple_client_test")?;
+  *counter += 1;
+  list_users_test::<M>()
+    .await
+    .with_context(|| "list_users_test")?;
   *counter += 1;
   multiple_client_messages_test::<M>()
     .await
