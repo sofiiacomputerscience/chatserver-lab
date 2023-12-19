@@ -15,6 +15,8 @@ use crate::{
 #[cfg(feature = "federation")]
 use crate::messages::{Outgoing, ServerMessage, ServerReply};
 
+// this structure will contain the data you need to track in your server
+// this will include things like delivered messages, clients last seen sequence number, etc.
 pub struct Server {}
 
 #[async_trait]
@@ -34,7 +36,8 @@ impl MessageServer for Server {
   /*
    implementation notes:
    * the workproof should be checked first
-   * the nonce is in sequence.src
+    * the nonce is in sequence.src and should be converted with (&sequence.src).into()
+   * then, if the client is known, its last seen sequence number must be verified (and updated)
   */
   async fn handle_sequenced_message<A: Send>(
     &self,
@@ -43,16 +46,37 @@ impl MessageServer for Server {
     todo!()
   }
 
+  /* Here client messages are handled.
+     * if the client is local,
+       * if the mailbox is full, BoxFull should be returned
+       * otherwise, Delivered should be returned
+     * if the client is unknown, the message should be stored and Delayed must be returned
+     * (federation) if the client is remote, Transfer should be returned
+
+     It is recommended to write an function that handles a single message and use it to handle
+     both ClientMessage variants. 
+   */
   async fn handle_client_message(&self, src: ClientId, msg: ClientMessage) -> Vec<ClientReply> {
     todo!()
   }
 
-  #[cfg(feature = "federation")]
-  async fn handle_server_message(&self, msg: ServerMessage) -> ServerReply {
+  /* for the given client, return the next message or error if available
+   */
+  async fn client_poll(&self, client: ClientId) -> ClientPollReply {
     todo!()
   }
 
-  async fn client_poll(&self, client: ClientId) -> ClientPollReply {
+  /* For announces
+      * if the route is empty, return EmptyRoute
+      * if not, store the route in some way
+      * also store the remote clients
+      * if one of these remote clients has messages waiting, return them
+     For messages
+      * if local, deliver them
+      * if remote, forward them
+   */
+  #[cfg(feature = "federation")]
+  async fn handle_server_message(&self, msg: ServerMessage) -> ServerReply {
     todo!()
   }
 
@@ -60,6 +84,8 @@ impl MessageServer for Server {
     todo!()
   }
 
+  // return a route to the target server
+  // bonus points if it is the shortest route
   #[cfg(feature = "federation")]
   async fn route_to(&self, destination: ServerId) -> Option<Vec<ServerId>> {
     todo!()
