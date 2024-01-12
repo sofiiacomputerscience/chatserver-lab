@@ -374,6 +374,92 @@ async fn message_to_outer_user_delayed<M: MessageServer>() -> anyhow::Result<()>
 
   Ok(())
 }
+
+#[cfg(feature = "federation")]
+async fn routing_test<M: MessageServer>() -> anyhow::Result<()> {
+  let sid = ServerId::default();
+  let server: M = MessageServer::new(sid);
+
+  let c1 = server.register_local_client("user 1".to_string()).await;
+  /* map:
+
+        us - s1 - s2
+         |         |
+        s5 - s4 - s3 
+   */
+  let s1 = ServerId::from(1);
+  let s2 = ServerId::from(2);
+  let s3 = ServerId::from(3);
+  let s4 = ServerId::from(4);
+  let s5 = ServerId::from(5);
+  let s4_user = ClientId::default();
+  // first advertise the long route
+  let r = server
+    .handle_server_message(ServerMessage::Announce {
+      route: vec![s4, s3, s2, s1],
+      clients: HashMap::from([(s4_user, "s4 user".into())]),
+    })
+    .await;
+  let expected_empty_out = ServerReply::Outgoing(Vec::new());
+  if r != expected_empty_out {
+    anyhow::bail!("msg1: Expected {:?}\n,    got {:?}", expected_empty_out, r);
+  }
+  // send a message to this user and make sur we exit by node 1
+  let r = server
+    .handle_client_message(
+      c1,
+      ClientMessage::Text {
+        dest: s4_user,
+        content: "Hello".to_string(),
+      },
+    )
+    .await;
+  let expected1 = vec![ClientReply::Transfer(
+    s1,
+    ServerMessage::Message(FullyQualifiedMessage {
+      src: c1,
+      srcsrv: sid,
+      dsts: vec![(s4_user, s4)],
+      content: "Hello".to_string(),
+    }),
+  )];
+  if r != expected1 {
+    anyhow::bail!("msg2: Expected {:?}\n,    got {:?}", expected1, r);
+  }
+  // now advertise another alternative route
+  let r = server
+    .handle_server_message(ServerMessage::Announce {
+      route: vec![s2, s3, s4, s5],
+      clients: HashMap::new(),
+    })
+    .await;
+  if r != expected_empty_out {
+    anyhow::bail!("msg3: Expected {:?}\n,    got {:?}", expected_empty_out, r);
+  }
+  let r = server
+    .handle_client_message(
+      c1,
+      ClientMessage::Text {
+        dest: s4_user,
+        content: "Hello 2".to_string(),
+      },
+    )
+    .await;
+  let expected2 = vec![ClientReply::Transfer(
+    s5,
+    ServerMessage::Message(FullyQualifiedMessage {
+      src: c1,
+      srcsrv: sid,
+      dsts: vec![(s4_user, s4)],
+      content: "Hello 2".to_string(),
+    }),
+  )];
+  if r != expected2 {
+    anyhow::bail!("msg4: Expected {:?}\n,    got {:?}", expected2, r);
+  }
+  Ok(())
+}
+
 async fn all_tests<M: MessageServer>(counter: &mut usize) -> anyhow::Result<()> {
   sequence_correct::<M>()
     .await
@@ -420,6 +506,8 @@ async fn all_tests<M: MessageServer>(counter: &mut usize) -> anyhow::Result<()> 
     message_to_outer_user_delayed::<M>()
       .await
       .with_context(|| "message_to_outer_user_delayed")?;
+    *counter += 1;
+    routing_test::<M>().await.with_context(|| "routing")?;
     *counter += 1;
   }
   Ok(())
