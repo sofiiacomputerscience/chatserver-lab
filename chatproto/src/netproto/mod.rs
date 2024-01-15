@@ -165,7 +165,7 @@ mod test {
   fn round_trip<T, ENC, DEC>(e: ENC, d: DEC, clear: &T, encoded: &[u8])
   where
     T: Eq + std::fmt::Debug,
-    ENC: FnOnce(&mut Cursor<Vec<u8>>, &T) -> anyhow::Result<()>,
+    ENC: FnOnce(&mut Cursor<Vec<u8>>, &T) -> std::io::Result<()>,
     DEC: FnOnce(&mut Cursor<Vec<u8>>) -> anyhow::Result<T>,
   {
     log::info!("test {:?} <-> {:?}", clear, encoded);
@@ -200,7 +200,12 @@ mod test {
       ),
     ];
     for (raw, encoded) in samples {
-      round_trip(encode::u128, decode::u128, &raw, encoded);
+      round_trip(
+        |w, x: &u128| encode::u128(w, *x),
+        decode::u128,
+        &raw,
+        encoded,
+      );
     }
   }
 
