@@ -16,8 +16,18 @@ where
 {
   if m < 251 {
     w.write_u8(m as u8)
+  } else if m < u128::pow(2, 16) {
+    w.write_u8(251 as u8)?;
+    w.write_u16::<LittleEndian>(m as u16)
+  } else if m < u128::pow(2, 32) {
+    w.write_u8(252 as u8)?;
+    w.write_u32::<LittleEndian>(m as u32)
+  } else if m < u128::pow(2, 64) {
+    w.write_u8(253 as u8)?;
+    w.write_u64::<LittleEndian>(m as u64)
   } else {
-    todo!()
+    w.write_u8(254 as u8)?;
+    w.write_u128::<LittleEndian>(m as u128)
   }
 }
 
@@ -28,7 +38,8 @@ fn uuid<W>(w: &mut W, m: &Uuid) -> std::io::Result<()>
 where
   W: Write,
 {
-  todo!()
+  w.write_u8(m.as_bytes().len() as u8)?;
+  w.write_all(m.as_bytes())
 }
 
 // reuse uuid
@@ -36,7 +47,7 @@ pub fn clientid<W>(w: &mut W, m: &ClientId) -> std::io::Result<()>
 where
   W: Write,
 {
-  todo!()
+  uuid(w, &m.0)
 }
 
 // reuse uuid
@@ -44,7 +55,7 @@ pub fn serverid<W>(w: &mut W, m: &ServerId) -> std::io::Result<()>
 where
   W: Write,
 {
-  todo!()
+  uuid(w, &m.0)
 }
 
 // strings are encoded as the underlying bytes array
@@ -56,7 +67,9 @@ pub fn string<W>(w: &mut W, m: &str) -> std::io::Result<()>
 where
   W: Write,
 {
-  todo!()
+  let bytes = m.as_bytes();
+  let _ = w.write_u8(bytes.len() as u8);
+  w.write_all(bytes)
 }
 
 /* The following is VERY mechanical, and should be easy once the general principle is understood
@@ -112,21 +125,65 @@ pub fn server<W>(w: &mut W, m: &ServerMessage) -> std::io::Result<()>
 where
   W: Write,
 {
-  todo!()
+  match m {
+    ServerMessage::Announce { route, clients } => todo!(),
+    ServerMessage::Message(val) => {
+      // u128(w, 1)?;
+      // clientid(w, &val.src);
+      // serverid(w, &val.srcsrv);
+
+      todo!()
+    }
+  }
 }
 
 pub fn client<W>(w: &mut W, m: &ClientMessage) -> std::io::Result<()>
 where
   W: Write,
 {
-  todo!()
+  match m {
+    ClientMessage::Text { dest, content } => {
+      w.write_u8(0)?;
+      clientid(w, dest)?;
+      string(w, content)
+    }
+    ClientMessage::MText { dest, content } => {
+      w.write_u8(1)?;
+      u128(w, dest.len() as u128)?;
+      let _ = dest.iter().for_each(|x| {
+        let _ = clientid(w, x);
+      });
+      string(w, content)
+    }
+  }
 }
 
 pub fn client_replies<W>(w: &mut W, m: &[ClientReply]) -> std::io::Result<()>
 where
   W: Write,
 {
-  todo!()
+  u128(w, m.len() as u128);
+  m.iter().for_each(|x| {
+    match x {
+      ClientReply::Delivered => u128(w, 0),
+      ClientReply::Error(val) => Ok({
+        u128(w, 1);
+        match val {
+          crate::messages::ClientError::WorkProofError => u128(w, 0),
+          crate::messages::ClientError::UnknownClient => u128(w, 1),
+          crate::messages::ClientError::SequenceError => u128(w, 2),
+          crate::messages::ClientError::BoxFull(x) => {
+            u128(w, 3);
+            clientid(w, x)
+          }
+          crate::messages::ClientError::InternalError => u128(w, 4),
+        };
+      }),
+      ClientReply::Delayed => todo!(),
+      ClientReply::Transfer(v1, v2) => todo!(),
+    };
+  });
+  Ok(())
 }
 
 pub fn client_poll_reply<W>(w: &mut W, m: &ClientPollReply) -> std::io::Result<()>
@@ -135,7 +192,6 @@ where
 {
   todo!()
 }
-
 
 // hashmaps are encoded by first writing the size (using u128), then each key and values
 pub fn userlist<W>(w: &mut W, m: &HashMap<ClientId, String>) -> std::io::Result<()>

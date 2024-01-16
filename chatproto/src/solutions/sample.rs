@@ -17,28 +17,37 @@ use crate::messages::{Outgoing, ServerMessage, ServerReply};
 
 // this structure will contain the data you need to track in your server
 // this will include things like delivered messages, clients last seen sequence number, etc.
-pub struct Server {}
+pub struct Server {
+  id: ServerId,
+  clients: RwLock<HashMap<ClientId, String>>,
+}
 
 #[async_trait]
 impl MessageServer for Server {
   const GROUP_NAME: &'static str = "WRITE YOUR NAMES HERE, NOT YOUR TEAM NAME, YOUR ACTUAL NAMES!";
 
   fn new(id: ServerId) -> Self {
-    todo!()
+    Self {
+      id: id,
+      clients: RwLock::new(HashMap::new()),
+    }
   }
 
   // note: you need to roll a Uuid, and then convert it into a ClientId
   // Uuid::new_v4() will generate such a value
   // you will most likely have to edit the Server struct as as to store information about the client
   async fn register_local_client(&self, name: String) -> ClientId {
-    todo!()
+    let user_id = ClientId(Uuid::new_v4());
+    let mut l = self.clients.write().await;
+    l.insert(user_id, name);
+    user_id
   }
 
   /*
-   implementation notes:
-   * the workproof should be checked first
-    * the nonce is in sequence.src and should be converted with (&sequence.src).into()
-   * then, if the client is known, its last seen sequence number must be verified (and updated)
+  * implementation notes:
+  * the workproof should be checked first
+  * the nonce is in sequence.src and should be converted with (&sequence.src).into()
+  * then, if the client is known, its last seen sequence number must be verified (and updated)
   */
   async fn handle_sequenced_message<A: Send>(
     &self,
