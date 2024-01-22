@@ -2,12 +2,12 @@ use async_std::sync::RwLock;
 use async_trait::async_trait;
 use std::collections::{HashMap, HashSet, VecDeque};
 use uuid::Uuid;
-
+// the usage of self?
 use crate::{
   core::{MessageServer, MAILBOX_SIZE, WORKPROOF_STRENGTH},
   messages::{
-    self, ClientError, ClientId, ClientMessage, ClientPollReply, ClientReply,
-    FullyQualifiedMessage, Sequence, ServerId, DelayedError,
+    self, ClientError, ClientId, ClientMessage, ClientPollReply, ClientReply, DelayedError,
+    FullyQualifiedMessage, Sequence, ServerId,
   },
   workproof::verify_workproof,
 };
@@ -105,32 +105,40 @@ impl MessageServer for Server {
         vec![self.handle_single_message(src, dest, content).await]
       }
       ClientMessage::MText { dest, content } => {
-        // processing the message for multiole destinators
+        // processing the message for multiple destinators
         let mut replies = Vec::new();
         for recipient in dest {
-            let reply = self.handle_single_message(src, recipient, content.clone()).await;
-            replies.push(reply);
+          let reply = self
+            .handle_single_message(src, recipient, content.clone())
+            .await;
+          replies.push(reply);
         }
         replies
       }
-    } 
+    }
   }
 
   /* for the given client, return the next message or error if available
    */
+
   async fn client_poll(&self, client: ClientId) -> ClientPollReply {
+    // access all clients through mutable
     let mut clients = self.clients.write().await;
 
-    if let Some(client_info) = clients.get_mut(&client){
-      if let Some(message_info) = client_info.mailbox.pop_front(){
-        ClientPollReply::Message { src: message_info.src, content: message_info.content }
-
-      }
-      else {
+    // checking whether the client exist or no
+    if let Some(client_info) = clients.get_mut(&client) {
+      // if yes checking whether there are messages in the mail box of the client
+      if let Some(message_info) = client_info.mailbox.pop_front() {
+        ClientPollReply::Message {
+          src: message_info.src,
+          content: message_info.content,
+        }
+        // if there are no messages in the client box - return nothing
+      } else {
         ClientPollReply::Nothing
       }
-    }
-    else {
+      // if the client wasn't found returning an error
+    } else {
       ClientPollReply::DelayedError(DelayedError::UnknownRecipient(client))
     }
   }
@@ -144,25 +152,38 @@ impl MessageServer for Server {
      * if local, deliver them
      * if remote, forward them
   */
+
   #[cfg(feature = "federation")]
   async fn handle_server_message(&self, msg: ServerMessage) -> ServerReply {
     todo!()
   }
 
+
+
   async fn list_users(&self) -> HashMap<ClientId, String> {
-    todo!()
+    // the access to read data of the clients 
+    let clients = self.clients.read().await;
+
+    // creating a mutable list for the list of users
+    let mut list = HashMap::new();
+
+    // iterating through the list and inserting new values
+    for (client_id, client_info) in clients.iter() {
+      list.insert(*client_id, client_info.name.clone());
+    }
+    // returning the list
+    list
   }
 
   // return a route to the target server
   // bonus points if it is the shortest route
+
+
   #[cfg(feature = "federation")]
   async fn route_to(&self, destination: ServerId) -> Option<Vec<ServerId>> {
     todo!()
   }
 }
-
-
-
 
 //Implementation of function to deliver the message to the one dest
 impl Server {
