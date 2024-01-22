@@ -7,7 +7,7 @@ use crate::{
   core::{MessageServer, MAILBOX_SIZE, WORKPROOF_STRENGTH},
   messages::{
     self, ClientError, ClientId, ClientMessage, ClientPollReply, ClientReply,
-    FullyQualifiedMessage, Sequence, ServerId,
+    FullyQualifiedMessage, Sequence, ServerId, DelayedError,
   },
   workproof::verify_workproof,
 };
@@ -35,7 +35,7 @@ pub struct Server {
 
 #[async_trait]
 impl MessageServer for Server {
-  const GROUP_NAME: &'static str = "WRITE YOUR NAMES HERE, NOT YOUR TEAM NAME, YOUR ACTUAL NAMES!";
+  const GROUP_NAME: &'static str = "Sofiia Boldeskul and Maksym Shyiko";
 
   fn new(id: ServerId) -> Self {
     Self {
@@ -73,7 +73,7 @@ impl MessageServer for Server {
     sequence: Sequence<A>,
   ) -> Result<A, ClientError> {
     let nonce: u128 = (&sequence.src).into();
-    if !verify_workproof(sequence.workproof, nonce, WORKPROOF_STRENGTH) {
+    if !verify_workproof(nonce, sequence.workproof, WORKPROOF_STRENGTH) {
       return Err(ClientError::WorkProofError);
     }
     let mut clients = self.clients.write().await;
@@ -100,20 +100,39 @@ impl MessageServer for Server {
   */
 
   async fn handle_client_message(&self, src: ClientId, msg: ClientMessage) -> Vec<ClientReply> {
-    let mut clients = self.clients.write().await;
-
     match msg {
-      ClientMessage::MText { dest, content } => todo!(),
       ClientMessage::Text { dest, content } => {
         vec![self.handle_single_message(src, dest, content).await]
       }
-    }
+      ClientMessage::MText { dest, content } => {
+        // processing the message for multiole destinators
+        let mut replies = Vec::new();
+        for recipient in dest {
+            let reply = self.handle_single_message(src, recipient, content.clone()).await;
+            replies.push(reply);
+        }
+        replies
+      }
+    } 
   }
 
   /* for the given client, return the next message or error if available
    */
   async fn client_poll(&self, client: ClientId) -> ClientPollReply {
-    todo!()
+    let mut clients = self.clients.write().await;
+
+    if let Some(client_info) = clients.get_mut(&client){
+      if let Some(message_info) = client_info.mailbox.pop_front(){
+        ClientPollReply::Message { src: message_info.src, content: message_info.content }
+
+      }
+      else {
+        ClientPollReply::Nothing
+      }
+    }
+    else {
+      ClientPollReply::DelayedError(DelayedError::UnknownRecipient(client))
+    }
   }
 
   /* For announces
@@ -141,6 +160,10 @@ impl MessageServer for Server {
     todo!()
   }
 }
+
+
+
+
 //Implementation of function to deliver the message to the one dest
 impl Server {
   // write your own methods here
@@ -159,7 +182,7 @@ impl Server {
             src,
             content: message,
           };
-          client.mailbox.push_back((message_info));
+          client.mailbox.push_back(message_info);
           ClientReply::Delivered
         }
       }
