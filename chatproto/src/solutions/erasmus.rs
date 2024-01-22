@@ -161,18 +161,7 @@ impl MessageServer for Server {
 
 
   async fn list_users(&self) -> HashMap<ClientId, String> {
-    // the access to read data of the clients 
-    let clients = self.clients.read().await;
-
-    // creating a mutable list for the list of users
-    let mut list = HashMap::new();
-
-    // iterating through the list and inserting new values
-    for (client_id, client_info) in clients.iter() {
-      list.insert(*client_id, client_info.name.clone());
-    }
-    // returning the list
-    list
+    todo!()
   }
 
   // return a route to the target server
