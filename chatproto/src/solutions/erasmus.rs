@@ -31,6 +31,8 @@ struct ClientInfo {
 pub struct Server {
   id: ServerId,
   clients: RwLock<HashMap<ClientId, ClientInfo>>,
+  routes: RwLock<HashMap<ServerId, Vec<ServerId>>>,
+  remote_clients: RwLock<HashMap<ServerId, Vec<ClientId>>>,
 }
 
 #[async_trait]
@@ -41,6 +43,8 @@ impl MessageServer for Server {
     Self {
       id: id,
       clients: RwLock::new(HashMap::new()),
+      routes: RwLock::new(HashMap::new()),
+      remote_clients: RwLock::new(HashMap::new()),
     }
   }
 
@@ -155,22 +159,39 @@ impl MessageServer for Server {
 
   #[cfg(feature = "federation")]
   async fn handle_server_message(&self, msg: ServerMessage) -> ServerReply {
-    todo!()
+    match msg {
+      ServerMessage::Announce { route, clients } => {
+        let mut routes = self.routes.write().await;
+        let mut remotes = self.remote_clients.write().await;
+        let dest = route.last();
+        match dest {
+          Some(val) => {
+            routes.insert(*val, route.clone());
+            remotes.insert(*val, clients.iter().map(|x|*x.0).collect());
+
+            ServerReply::Outgoing(vec![])
+          },
+          None => ServerReply::EmptyRoute
+        }      
+      }
+      ServerMessage::Message(_) => todo!(),
+    }
   }
 
-
-
   async fn list_users(&self) -> HashMap<ClientId, String> {
-    todo!()
+    let map = self.clients.read().await;
+    map.iter().map(|(&client_id, client_info)| (client_id, client_info.name.clone())).collect()
   }
 
   // return a route to the target server
   // bonus points if it is the shortest route
-
-
   #[cfg(feature = "federation")]
   async fn route_to(&self, destination: ServerId) -> Option<Vec<ServerId>> {
-    todo!()
+    let route = self.routes.read().await;
+    match route.get(&destination) {
+    Some(vec) => Some(vec.clone()),
+    None => None,  
+    }
   }
 }
 
