@@ -2,7 +2,7 @@ use async_std::sync::RwLock;
 use async_trait::async_trait;
 use std::collections::{HashMap, HashSet, VecDeque};
 use uuid::Uuid;
-// the usage of self?
+
 use crate::{
   core::{MessageServer, MAILBOX_SIZE, WORKPROOF_STRENGTH},
   messages::{
@@ -23,16 +23,20 @@ struct MessageInfo {
   content: String,
 }
 
+enum Stuff {
+  Local { name: String, last_sequence: u128 },
+  Remote { server: Option<ServerId> },
+}
+
 struct ClientInfo {
-  name: String,
-  last_sequence: u128,
+  stuff: Stuff,
   mailbox: VecDeque<MessageInfo>,
 }
+
 pub struct Server {
   id: ServerId,
   clients: RwLock<HashMap<ClientId, ClientInfo>>,
   routes: RwLock<HashMap<ServerId, Vec<ServerId>>>,
-  remote_clients: RwLock<HashMap<ServerId, Vec<ClientId>>>,
 }
 
 #[async_trait]
@@ -44,7 +48,6 @@ impl MessageServer for Server {
       id: id,
       clients: RwLock::new(HashMap::new()),
       routes: RwLock::new(HashMap::new()),
-      remote_clients: RwLock::new(HashMap::new()),
     }
   }
 
@@ -57,8 +60,11 @@ impl MessageServer for Server {
     clients.insert(
       user_id,
       ClientInfo {
-        name,
-        last_sequence: 0,
+        stuff: Stuff::Local {
+          name,
+          last_sequence: 0,
+        },
+
         mailbox: VecDeque::new(),
       },
     );
@@ -81,11 +87,19 @@ impl MessageServer for Server {
       return Err(ClientError::WorkProofError);
     }
     let mut clients = self.clients.write().await;
-    if let Some(client_data) = clients.get_mut(&sequence.src) {
-      if client_data.last_sequence >= sequence.seqid {
-        return Err(ClientError::SequenceError);
+    if let Some(clientinfo) = clients.get_mut(&sequence.src) {
+      match &mut clientinfo.stuff {
+        Stuff::Local {
+          name,
+          last_sequence,
+        } => {
+          if *last_sequence >= sequence.seqid {
+            return Err(ClientError::SequenceError);
+          }
+          *last_sequence = sequence.seqid;
+        }
+        _ => return Err(ClientError::UnknownClient),
       }
-      client_data.last_sequence = sequence.seqid;
     } else {
       return Err(ClientError::UnknownClient);
     }
@@ -162,17 +176,32 @@ impl MessageServer for Server {
     match msg {
       ServerMessage::Announce { route, clients } => {
         let mut routes = self.routes.write().await;
-        let mut remotes = self.remote_clients.write().await;
-        let dest = route.last();
-        match dest {
-          Some(val) => {
-            routes.insert(*val, route.clone());
-            remotes.insert(*val, clients.iter().map(|x|*x.0).collect());
+        let mut myclients = self.clients.write().await;
+
+        match (route.last(), route.first()) {
+          (Some(remote_server), Some(next_hop)) => {
+            routes.insert(*remote_server, route.clone());
+            for c in clients.into_keys() {
+              let stuff = Stuff::Remote {
+                server: Some(*remote_server),
+              };
+              match myclients.entry(c) {
+                std::collections::hash_map::Entry::Occupied(mut e) => {
+                  e.get_mut().stuff = stuff;
+                }
+                std::collections::hash_map::Entry::Vacant(e) => {
+                  e.insert(ClientInfo {
+                    stuff,
+                    mailbox: VecDeque::new(),
+                  });
+                }
+              }
+            }
 
             ServerReply::Outgoing(vec![])
-          },
-          None => ServerReply::EmptyRoute
-        }      
+          }
+          _ => ServerReply::EmptyRoute,
+        }
       }
       ServerMessage::Message(_) => todo!(),
     }
@@ -180,7 +209,13 @@ impl MessageServer for Server {
 
   async fn list_users(&self) -> HashMap<ClientId, String> {
     let map = self.clients.read().await;
-    map.iter().map(|(&client_id, client_info)| (client_id, client_info.name.clone())).collect()
+    map
+      .iter()
+      .filter_map(|(&client_id, client_info)| match &client_info.stuff {
+        Stuff::Local { name, .. } => Some((client_id, name.clone())),
+        _ => None,
+      })
+      .collect()
   }
 
   // return a route to the target server
@@ -189,8 +224,8 @@ impl MessageServer for Server {
   async fn route_to(&self, destination: ServerId) -> Option<Vec<ServerId>> {
     let route = self.routes.read().await;
     match route.get(&destination) {
-    Some(vec) => Some(vec.clone()),
-    None => None,  
+      Some(vec) => Some(vec.clone()),
+      None => None,
     }
   }
 }
@@ -204,20 +239,47 @@ impl Server {
     dest: ClientId,
     message: String,
   ) -> ClientReply {
-    match self.clients.write().await.get_mut(&dest) {
-      Some(client) => {
-        if client.mailbox.len() >= MAILBOX_SIZE {
-          ClientReply::Error(ClientError::BoxFull(dest))
-        } else {
-          let message_info = MessageInfo {
-            src,
-            content: message,
-          };
-          client.mailbox.push_back(message_info);
-          ClientReply::Delivered
+    let mut myclients = self.clients.write().await;
+    match myclients.get_mut(&dest) {
+      Some(client) => match client.stuff {
+        Stuff::Local { .. } | Stuff::Remote { server: None } => {
+          if client.mailbox.len() >= MAILBOX_SIZE {
+            ClientReply::Error(ClientError::BoxFull(dest))
+          } else {
+            let message_info = MessageInfo {
+              src,
+              content: message,
+            };
+            client.mailbox.push_back(message_info);
+            ClientReply::Delivered
+          }
         }
+        Stuff::Remote {
+          server: Some(destination_server),
+        } => ClientReply::Transfer(
+          destination_server,
+          ServerMessage::Message(FullyQualifiedMessage {
+            src,
+            srcsrv: self.id,
+            dsts: vec![(dest, destination_server)],
+            content: message,
+          }),
+        ),
+      },
+      None => {
+        log::error!("{dest:?} {src:?} {message}");
+        myclients.insert(
+          dest,
+          ClientInfo {
+            stuff: Stuff::Remote { server: None },
+            mailbox: VecDeque::from([MessageInfo {
+              src,
+              content: message,
+            }]),
+          },
+        );
+        ClientReply::Delayed
       }
-      None => ClientReply::Delayed,
     }
   }
 }
