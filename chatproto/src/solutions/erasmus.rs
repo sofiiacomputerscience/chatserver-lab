@@ -6,8 +6,8 @@ use uuid::Uuid;
 use crate::{
   core::{MessageServer, MAILBOX_SIZE, WORKPROOF_STRENGTH},
   messages::{
-    self, ClientError, ClientId, ClientMessage, ClientPollReply, ClientReply,
-    FullyQualifiedMessage, Sequence, ServerId, DelayedError,
+    self, ClientError, ClientId, ClientMessage, ClientPollReply, ClientReply, DelayedError,
+    FullyQualifiedMessage, Sequence, ServerId,
   },
   workproof::verify_workproof,
 };
@@ -31,6 +31,8 @@ struct ClientInfo {
 pub struct Server {
   id: ServerId,
   clients: RwLock<HashMap<ClientId, ClientInfo>>,
+  routes: RwLock<HashMap<ServerId, Vec<ServerId>>>,
+  remote_clients: RwLock<HashMap<ServerId, Vec<ClientId>>>,
 }
 
 #[async_trait]
@@ -41,6 +43,8 @@ impl MessageServer for Server {
     Self {
       id: id,
       clients: RwLock::new(HashMap::new()),
+      routes: RwLock::new(HashMap::new()),
+      remote_clients: RwLock::new(HashMap::new()),
     }
   }
 
@@ -108,12 +112,14 @@ impl MessageServer for Server {
         // processing the message for multiole destinators
         let mut replies = Vec::new();
         for recipient in dest {
-            let reply = self.handle_single_message(src, recipient, content.clone()).await;
-            replies.push(reply);
+          let reply = self
+            .handle_single_message(src, recipient, content.clone())
+            .await;
+          replies.push(reply);
         }
         replies
       }
-    } 
+    }
   }
 
   /* for the given client, return the next message or error if available
@@ -121,16 +127,16 @@ impl MessageServer for Server {
   async fn client_poll(&self, client: ClientId) -> ClientPollReply {
     let mut clients = self.clients.write().await;
 
-    if let Some(client_info) = clients.get_mut(&client){
-      if let Some(message_info) = client_info.mailbox.pop_front(){
-        ClientPollReply::Message { src: message_info.src, content: message_info.content }
-
-      }
-      else {
+    if let Some(client_info) = clients.get_mut(&client) {
+      if let Some(message_info) = client_info.mailbox.pop_front() {
+        ClientPollReply::Message {
+          src: message_info.src,
+          content: message_info.content,
+        }
+      } else {
         ClientPollReply::Nothing
       }
-    }
-    else {
+    } else {
       ClientPollReply::DelayedError(DelayedError::UnknownRecipient(client))
     }
   }
@@ -146,23 +152,41 @@ impl MessageServer for Server {
   */
   #[cfg(feature = "federation")]
   async fn handle_server_message(&self, msg: ServerMessage) -> ServerReply {
-    todo!()
+    match msg {
+      ServerMessage::Announce { route, clients } => {
+        let mut routes = self.routes.write().await;
+        let mut remotes = self.remote_clients.write().await;
+        let dest = route.last();
+        match dest {
+          Some(val) => {
+            routes.insert(*val, route.clone());
+            remotes.insert(*val, clients.iter().map(|x|*x.0).collect());
+
+            ServerReply::Outgoing(vec![])
+          },
+          None => ServerReply::EmptyRoute
+        }      
+      }
+      ServerMessage::Message(_) => todo!(),
+    }
   }
 
   async fn list_users(&self) -> HashMap<ClientId, String> {
-    todo!()
+    let map = self.clients.read().await;
+    map.iter().map(|(&client_id, client_info)| (client_id, client_info.name.clone())).collect()
   }
 
   // return a route to the target server
   // bonus points if it is the shortest route
   #[cfg(feature = "federation")]
   async fn route_to(&self, destination: ServerId) -> Option<Vec<ServerId>> {
-    todo!()
+    let route = self.routes.read().await;
+    match route.get(&destination) {
+    Some(vec) => Some(vec.clone()),
+    None => None,  
+    }
   }
 }
-
-
-
 
 //Implementation of function to deliver the message to the one dest
 impl Server {
