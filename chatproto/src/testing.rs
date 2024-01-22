@@ -383,10 +383,10 @@ async fn routing_test<M: MessageServer>() -> anyhow::Result<()> {
   let c1 = server.register_local_client("user 1".to_string()).await;
   /* map:
 
-        us - s1 - s2
-         |         |
-        s5 - s4 - s3 
-   */
+       us - s1 - s2
+        |         |
+       s5 - s4 - s3
+  */
   let s1 = ServerId::from(1);
   let s2 = ServerId::from(2);
   let s3 = ServerId::from(3);

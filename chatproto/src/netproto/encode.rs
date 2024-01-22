@@ -121,38 +121,37 @@ where
   }
 }
 
-
 pub fn server<W>(w: &mut W, m: &ServerMessage) -> std::io::Result<()>
 where
-    W: Write,
+  W: Write,
 {
-    match m {
-        ServerMessage::Announce { route, clients } => {
-            w.write_u8(0)?; // код для варианта Announce
-            u128(w, route.len() as u128)?; // длина маршрута
-            for server_id in route {
-                serverid(w, server_id)?; // кодируем каждый ServerId в маршруте
-            }
-            u128(w, clients.len() as u128)?; // длина списка клиентов
-            for (client_id, name) in clients {
-                clientid(w, client_id)?; // кодируем ClientId
-                string(w, name)?; // кодируем имя клиента (строку)
-            }
-            Ok(())
-        }
-        ServerMessage::Message(val) => {
-            w.write_u8(1)?; // код для варианта Message
-            clientid(w, &val.src)?; // кодируем ClientId источника
-            serverid(w, &val.srcsrv)?; // кодируем ServerId источника
-            u128(w, val.dsts.len() as u128)?; // длина списка адресатов
-            for (dst_client_id, dst_server_id) in &val.dsts {
-                clientid(w, dst_client_id)?; // кодируем ClientId назначения
-                serverid(w, dst_server_id)?; // кодируем ServerId назначения
-            }
-            string(w, &val.content)?; // кодируем содержимое сообщения
-            Ok(())
-        }
+  match m {
+    ServerMessage::Announce { route, clients } => {
+      w.write_u8(0)?; // код для варианта Announce
+      u128(w, route.len() as u128)?; // длина маршрута
+      for server_id in route {
+        serverid(w, server_id)?; // кодируем каждый ServerId в маршруте
+      }
+      u128(w, clients.len() as u128)?; // длина списка клиентов
+      for (client_id, name) in clients {
+        clientid(w, client_id)?; // кодируем ClientId
+        string(w, name)?; // кодируем имя клиента (строку)
+      }
+      Ok(())
     }
+    ServerMessage::Message(val) => {
+      w.write_u8(1)?; // код для варианта Message
+      clientid(w, &val.src)?; // кодируем ClientId источника
+      serverid(w, &val.srcsrv)?; // кодируем ServerId источника
+      u128(w, val.dsts.len() as u128)?; // длина списка адресатов
+      for (dst_client_id, dst_server_id) in &val.dsts {
+        clientid(w, dst_client_id)?; // кодируем ClientId назначения
+        serverid(w, dst_server_id)?; // кодируем ServerId назначения
+      }
+      string(w, &val.content)?; // кодируем содержимое сообщения
+      Ok(())
+    }
+  }
 }
 
 // pub fn server<W>(w: &mut W, m: &ServerMessage) -> std::io::Result<()>
