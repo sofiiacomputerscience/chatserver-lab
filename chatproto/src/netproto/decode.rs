@@ -8,7 +8,7 @@ use crate::{
   client,
   messages::{
     AuthMessage, ClientId, ClientMessage, ClientPollReply, ClientQuery, ClientReply, Sequence,
-    ServerId, ServerMessage,
+    ServerId, ServerMessage, ClientError, DelayedError,
   },
 };
 
@@ -120,10 +120,64 @@ pub fn client<R: Read>(rd: &mut R) -> anyhow::Result<ClientMessage> {
 }
 
 pub fn client_replies<R: Read>(rd: &mut R) -> anyhow::Result<Vec<ClientReply>> {
-  todo!()
+  let size = u128(rd)? as usize; // считываем размер списка ответов
+  let mut replies = Vec::with_capacity(size); // создаем вектор для хранения ответов
+
+  for _ in 0..size {
+      let reply_type = rd.read_u8()?; // считываем тип ответа
+      let reply = match reply_type {
+          0 => ClientReply::Delivered, 
+          1 => {
+              
+              let error_type = rd.read_u8()?; 
+              let error = match error_type {
+                  0 => ClientError::WorkProofError,
+                  1 => ClientError::UnknownClient,
+                  2 => ClientError::SequenceError,
+                  3 => {
+                      // для типа ошибки "BoxFull" нужно декодировать еще и ClientId
+                      let client_id = clientid(rd)?;
+                      ClientError::BoxFull(client_id)
+                  }
+                  4 => ClientError::InternalError,
+                  _ => return Err(anyhow!("Unknown client error type")),
+              };
+              ClientReply::Error(error)
+          },
+          2 => ClientReply::Delayed, // тип ответа "Delayed"
+          3 => {
+            // тип ответа "Transfer", требует декодирования ServerId и ServerMessage
+            let server_id = serverid(rd)?; // декодируем ServerId
+            let server_message = server(rd)?; // декодируем ServerMessage
+            ClientReply::Transfer(server_id, server_message)
+        },        
+          _ => return Err(anyhow!("Unknown client reply type")),
+      };
+      replies.push(reply); // добавляем декодированный ответ в список
+  }
+
+  Ok(replies) // возвращаем результат
 }
 
+
 pub fn client_poll_reply<R: Read>(rd: &mut R) -> anyhow::Result<ClientPollReply> {
+  //  let reply_type = rd.read_u8();
+  //  match reply_type { 0 => {
+  //       // option message 
+  //       let src = clientid(rd)?; 
+  //       let content = string(rd)?; 
+  //       Ok(ClientPollReply::Message { src, content })
+  //     }
+  //     1 => {
+  //       let error = delayed_error(rd)?;
+  //       Ok(ClientPollReply::DelayedError((error)))
+  //     }
+  //     2 => {
+  //       Ok(ClientPollReply::Nothing)
+  //     }
+  //   _ => Err(anyhow!("Error we don't know this type"))
+
+  //  }
   todo!()
 }
 
