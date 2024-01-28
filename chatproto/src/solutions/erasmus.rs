@@ -173,38 +173,102 @@ impl MessageServer for Server {
 
   #[cfg(feature = "federation")]
   async fn handle_server_message(&self, msg: ServerMessage) -> ServerReply {
-    match msg {
-      ServerMessage::Announce { route, clients } => {
-        let mut routes = self.routes.write().await;
-        let mut myclients = self.clients.write().await;
-
-        match (route.last(), route.first()) {
-          (Some(remote_server), Some(next_hop)) => {
-            routes.insert(*remote_server, route.clone());
-            for c in clients.into_keys() {
-              let stuff = Stuff::Remote {
-                server: Some(*remote_server),
-              };
-              match myclients.entry(c) {
-                std::collections::hash_map::Entry::Occupied(mut e) => {
-                  e.get_mut().stuff = stuff;
+      match msg {
+          ServerMessage::Announce { route, clients } => {
+            let mut routes = self.routes.write().await;
+            let mut myclients = self.clients.write().await;
+            let mut outgoing_messages = Vec::new();
+        
+            match (route.last(), route.first()) {
+                (Some(remote_server), Some(next_hop)) => {
+                    routes.insert(*next_hop, route.clone());
+                    for (client_id, name) in clients.into_iter() {
+                        let stuff = Stuff::Remote {
+                            server: Some(*next_hop),
+                        };
+                        match myclients.entry(client_id) {
+                            std::collections::hash_map::Entry::Occupied(mut entry) => {
+                                entry.get_mut().stuff = stuff;
+        
+                                // Check if there are messages waiting and send them
+                                while let Some(message_info) = entry.get_mut().mailbox.pop_front() {
+                                    outgoing_messages.push(Outgoing {
+                                        nexthop: *remote_server,
+                                        message: FullyQualifiedMessage {
+                                            src: message_info.src,
+                                            srcsrv: self.id,
+                                            dsts: vec![(client_id, *next_hop)],
+                                            content: message_info.content,
+                                        },
+                                    });
+                                }
+                            }
+                            std::collections::hash_map::Entry::Vacant(entry) => {
+                                entry.insert(ClientInfo {
+                                    stuff,
+                                    mailbox: VecDeque::new(),
+                                });
+                            }
+                        }
+                    }
+        
+                    ServerReply::Outgoing(outgoing_messages)
                 }
-                std::collections::hash_map::Entry::Vacant(e) => {
-                  e.insert(ClientInfo {
-                    stuff,
-                    mailbox: VecDeque::new(),
-                  });
-                }
-              }
+                _ => ServerReply::EmptyRoute,
             }
-
-            ServerReply::Outgoing(vec![])
           }
-          _ => ServerReply::EmptyRoute,
-        }
+          ServerMessage::Message(fully_qualified_message) => {
+            let mut myclients = self.clients.write().await;
+            let mut outgoing_messages = Vec::new();
+        
+            for (dest_client, dest_server) in &fully_qualified_message.dsts {
+                // Check if the destination is local
+                if let Some(client_info) = myclients.get_mut(dest_client) {
+                    match client_info.stuff {
+                        Stuff::Local { .. } => {
+                            // Destination is local, deliver the message
+                            client_info.mailbox.push_back(MessageInfo {
+                                src: fully_qualified_message.src,
+                                content: fully_qualified_message.content.clone(),
+                            });
+                        }
+                        Stuff::Remote { server: Some(route_server) } => {
+                            // Save the Stuff variable in the remote client
+                            client_info.stuff = Stuff::Remote {
+                                server: Some(route_server),
+                            };
+        
+                            // Destination is remote, forward the message
+                            let route = self.route_to(*dest_server).await;
+                            match route {
+                                Some(route) => {
+                                    outgoing_messages.push(Outgoing {
+                                        nexthop: route_server,
+                                        message: FullyQualifiedMessage {
+                                            src: fully_qualified_message.src,
+                                            srcsrv: self.id,
+                                            dsts: vec![(*dest_client, *dest_server)],
+                                            content: fully_qualified_message.content.clone(),
+                                        },
+                                    });
+                                }
+                                None => {
+                                    // Handle case where route to destination server is not available
+                                    // This can be an error, delayed, or another appropriate response.
+                                    log::error!("Route to destination server not available");
+                                }
+                            }
+                        }
+                        _ => {
+                            // Handle other cases if needed
+                        }
+                    }
+                }
+            }
+        
+            ServerReply::Outgoing(outgoing_messages)
+          }
       }
-      ServerMessage::Message(_) => todo!(),
-    }
   }
 
   async fn list_users(&self) -> HashMap<ClientId, String> {
@@ -222,12 +286,33 @@ impl MessageServer for Server {
   // bonus points if it is the shortest route
   #[cfg(feature = "federation")]
   async fn route_to(&self, destination: ServerId) -> Option<Vec<ServerId>> {
-    let route = self.routes.read().await;
-    match route.get(&destination) {
-      Some(vec) => Some(vec.clone()),
-      None => None,
-    }
+      let route = self.routes.read().await;
+  
+      let mut shortest_route: Option<Vec<ServerId>> = None;
+  
+      for (next_hop, route_vec) in route.iter() {
+          if let Some(index) = route_vec.iter().position(|&id| id == destination) {
+              let (start, end) = route_vec.split_at(index); // Include the destination in the route
+              let mut current_route = vec![self.id];
+              current_route.extend_from_slice(&end.iter().rev().copied().collect::<Vec<ServerId>>());
+  
+              if let Some(existing_route) = &shortest_route {
+                  if current_route.len() < existing_route.len() {
+                      shortest_route = Some(current_route);
+                  }
+              } else {
+                  shortest_route = Some(current_route);
+              }
+          }
+      }
+  
+      shortest_route
   }
+  
+
+  
+  
+  
 }
 
 //Implementation of function to deliver the message to the one dest
@@ -240,6 +325,7 @@ impl Server {
     message: String,
   ) -> ClientReply {
     let mut myclients = self.clients.write().await;
+    let myroutes = self.routes.read().await;
     match myclients.get_mut(&dest) {
       Some(client) => match client.stuff {
         Stuff::Local { .. } | Stuff::Remote { server: None } => {
@@ -257,11 +343,23 @@ impl Server {
         Stuff::Remote {
           server: Some(destination_server),
         } => ClientReply::Transfer(
-          destination_server,
+          *myroutes
+                .get(&destination_server)
+                .expect("msg 1")
+                .last()
+                .expect("msg 2"),
           ServerMessage::Message(FullyQualifiedMessage {
             src,
             srcsrv: self.id,
-            dsts: vec![(dest, destination_server)],
+            dsts: vec![(
+              dest,
+              //destination_server,
+              *myroutes
+                .get(&destination_server)
+                .expect("msg 1")
+                .first()
+                .expect("msg 2"),
+            )],
             content: message,
           }),
         ),

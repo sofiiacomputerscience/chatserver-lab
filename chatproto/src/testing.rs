@@ -383,10 +383,10 @@ async fn routing_test<M: MessageServer>() -> anyhow::Result<()> {
   let c1 = server.register_local_client("user 1".to_string()).await;
   /* map:
 
-       us - s1 - s2
-        |         |
-       s5 - s4 - s3
-  */
+        us - s1 - s2
+         |         |
+        s5 - s4 - s3 
+   */
   let s1 = ServerId::from(1);
   let s2 = ServerId::from(2);
   let s3 = ServerId::from(3);
@@ -404,28 +404,7 @@ async fn routing_test<M: MessageServer>() -> anyhow::Result<()> {
   if r != expected_empty_out {
     anyhow::bail!("msg1: Expected {:?}\n,    got {:?}", expected_empty_out, r);
   }
-  // send a message to this user and make sur we exit by node 1
-  let r = server
-    .handle_client_message(
-      c1,
-      ClientMessage::Text {
-        dest: s4_user,
-        content: "Hello".to_string(),
-      },
-    )
-    .await;
-  let expected1 = vec![ClientReply::Transfer(
-    s1,
-    ServerMessage::Message(FullyQualifiedMessage {
-      src: c1,
-      srcsrv: sid,
-      dsts: vec![(s4_user, s4)],
-      content: "Hello".to_string(),
-    }),
-  )];
-  if r != expected1 {
-    anyhow::bail!("msg2: Expected {:?}\n,    got {:?}", expected1, r);
-  }
+  assert_eq!(server.route_to(s4).await, Some(vec![sid, s1, s2, s3, s4]));
   // now advertise another alternative route
   let r = server
     .handle_server_message(ServerMessage::Announce {
@@ -436,27 +415,7 @@ async fn routing_test<M: MessageServer>() -> anyhow::Result<()> {
   if r != expected_empty_out {
     anyhow::bail!("msg3: Expected {:?}\n,    got {:?}", expected_empty_out, r);
   }
-  let r = server
-    .handle_client_message(
-      c1,
-      ClientMessage::Text {
-        dest: s4_user,
-        content: "Hello 2".to_string(),
-      },
-    )
-    .await;
-  let expected2 = vec![ClientReply::Transfer(
-    s5,
-    ServerMessage::Message(FullyQualifiedMessage {
-      src: c1,
-      srcsrv: sid,
-      dsts: vec![(s4_user, s4)],
-      content: "Hello 2".to_string(),
-    }),
-  )];
-  if r != expected2 {
-    anyhow::bail!("msg4: Expected {:?}\n,    got {:?}", expected2, r);
-  }
+  assert_eq!(server.route_to(s4).await, Some(vec![sid, s5, s4]));
   Ok(())
 }
 
